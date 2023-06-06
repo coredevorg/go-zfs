@@ -14,7 +14,16 @@ Vagrant.configure("2") do |config|
 
     os=$(uname -s|tr '[A-Z]' '[a-z]')
     case $os in
-    linux) apt-get update -y && apt-get install -y --no-install-recommends gcc libc-dev zfsutils-linux ;;
+    linux)  apt-get update -y && apt-get install -y --no-install-recommends gcc libc-dev zfsutils-linux
+
+            # enable ssh root loging for remote testing & debugging
+            mkdir -/root/.ssh
+            cp /home/vagrant/.ssh/authorized_keys /root/.ssh/authorized_keys
+
+            # create devies for zpool creation
+            fallocate -l 1G /root/disk1.img
+            fallocate -l 1G /root/disk2.img
+            ;;
     esac
 
     cd /tmp
