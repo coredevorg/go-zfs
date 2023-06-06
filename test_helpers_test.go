@@ -77,8 +77,17 @@ func setupZPool(t *testing.T) cleanUpFunc {
 	t.Helper()
 
 	// TODO: this is a hack to allow running tests against a remote zfs server
-	if TestRemote || os.Getenv("TEST_REMOTE") == "true" || runtime.GOOS == "darwin" {
+
+	if runtime.GOOS == "darwin" && TestRemote {
+		// local MacOS environment: set TEST_REMOTE=true
+		// to run tests against a remote zfs server
 		setRemoteConfig()
+	} else {
+		// Vagrant environment: set TEST_REMOTE=false
+		// to skip remote tests during provisioning
+		if os.Getenv("TEST_REMOTE") == "false" {
+			setRemoteConfig()
+		}
 	}
 
 	// skip local temp file creation but use image files from container if we're using a remote config

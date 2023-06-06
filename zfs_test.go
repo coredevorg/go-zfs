@@ -11,7 +11,7 @@ import (
 	zfs "github.com/mistifyio/go-zfs/v3"
 )
 
-var TestRemote = true
+var TestRemote = false
 
 func TestDatasets(t *testing.T) {
 	defer setupZPool(t).cleanUp()
