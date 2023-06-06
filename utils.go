@@ -12,21 +12,28 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"golang.org/x/crypto/ssh"
 )
 
 type command struct {
-	Command string
-	Stdin   io.Reader
-	Stdout  io.Writer
+	Command      string
+	Stdin        io.Reader
+	Stdout       io.Writer
+	Stderr       io.Writer
+	stdoutBuffer bytes.Buffer
+	stderrBuffer bytes.Buffer
 }
 
-func (c *command) Run(arg ...string) ([][]string, error) {
+// waitable is an interface for commands that can be waited on.
+type waitable interface {
+	Wait() error
+}
+
+// LocalCommand returns a new exec.Cmd object for the given command.
+func LocalCommand(c *command, arg ...string) *exec.Cmd {
 	cmd := exec.Command(c.Command, arg...)
-
-	var stdout, stderr bytes.Buffer
-
 	if c.Stdout == nil {
-		cmd.Stdout = &stdout
+		cmd.Stdout = &c.stdoutBuffer
 	} else {
 		cmd.Stdout = c.Stdout
 	}
@@ -34,22 +41,79 @@ func (c *command) Run(arg ...string) ([][]string, error) {
 	if c.Stdin != nil {
 		cmd.Stdin = c.Stdin
 	}
-	cmd.Stderr = &stderr
+	cmd.Stderr = &c.stderrBuffer
+	return cmd
+}
 
-	id := uuid.New().String()
-	joinedArgs := cmd.Path
-	if len(cmd.Args) > 1 {
-		joinedArgs = strings.Join(append([]string{cmd.Path}, cmd.Args[1:]...), " ")
+// RemoteCommand returns a new ssh.Session object for the given command.
+func RemoteCommand(c *command) (*ssh.Session, error) {
+	// TODO: set environment, path, working directory, etc
+
+	session, err := RemoteConfig.NewRemoteSession()
+	if err != nil {
+		return nil, err
 	}
 
-	logger.Log([]string{"ID:" + id, "START", joinedArgs})
-	if err := cmd.Run(); err != nil {
+	if c.Stdout == nil {
+		session.Stdout = &c.stdoutBuffer
+	} else {
+		session.Stdout = c.Stdout
+	}
+
+	if c.Stdin != nil {
+		session.Stdin = c.Stdin
+	}
+	if c.Stderr == nil {
+		session.Stderr = &c.stderrBuffer
+	} else {
+		session.Stderr = c.Stderr
+	}
+	return session, nil
+}
+
+// Run executes the command and returns the output as a slice of slices.
+func (c *command) Run(arg ...string) ([][]string, error) {
+	var (
+		cmd waitable
+		err error
+	)
+
+	joinedArgs := strings.Join(append([]string{c.Command}, arg...), " ")
+	id := uuid.New().String()
+
+	if RemoteConfig != nil {
+		rcmd, err := RemoteCommand(c)
+		if err != nil {
+			return nil, err
+		}
+		logger.Log([]string{"ID:" + id, "REMOTE", joinedArgs})
+		err = rcmd.Start(joinedArgs)
+		if err != nil {
+			return nil, err
+		}
+		cmd = rcmd
+	} else {
+		lcmd := LocalCommand(c, arg...)
+		joinedArgs = lcmd.Path
+		if len(lcmd.Args) > 1 {
+			joinedArgs = strings.Join(append([]string{lcmd.Path}, lcmd.Args[1:]...), " ")
+		}
+		logger.Log([]string{"ID:" + id, "START", joinedArgs})
+		err = lcmd.Start()
+		if err != nil {
+			return nil, err
+		}
+		cmd = lcmd
+	}
+
+	if err = cmd.Wait(); err != nil {
 		return nil, &Error{
 			Err:    err,
+			Stderr: c.stderrBuffer.String(),
 			Debug:  joinedArgs,
-			Stderr: stderr.String(),
 		}
 	}
+
 	logger.Log([]string{"ID:" + id, "FINISH"})
 
 	// assume if you passed in something for stdout, that you know what to do with it
@@ -57,7 +121,7 @@ func (c *command) Run(arg ...string) ([][]string, error) {
 		return nil, nil
 	}
 
-	lines := strings.Split(stdout.String(), "\n")
+	lines := strings.Split(c.stdoutBuffer.String(), "\n")
 
 	// last line is always blank
 	lines = lines[0 : len(lines)-1]
@@ -199,7 +263,7 @@ func parseReferenceCount(field string) (int, error) {
 }
 
 func parseInodeChange(line []string) (*InodeChange, error) {
-	llen := len(line) // nolint:ifshort // llen *is* actually used
+	llen := len(line) //nolint:ifshort // llen *is* actually used
 	if llen < 1 {
 		return nil, fmt.Errorf("empty line passed")
 	}
