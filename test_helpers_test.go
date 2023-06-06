@@ -14,6 +14,15 @@ import (
 	"github.com/mistifyio/go-zfs/v3"
 )
 
+func setRemoteConfig() {
+	zfs.RemoteConfig = zfs.NewRemoteConfig(zfs.RemoteStruct{
+		Host:    "localhost",
+		Port:    "2222",
+		User:    "root",
+		KeyPath: ".vagrant/machines/ubuntu/vmware_desktop/private_key",
+	})
+}
+
 func sleep(delay int) {
 	time.Sleep(time.Duration(delay) * time.Second)
 }
@@ -63,9 +72,23 @@ func (f cleanUpFunc) cleanUp() {
 	f()
 }
 
-// do something like Restorer in github.com/packethost/pkg/internal/testenv/clearer.go
+// do something like Restorer in github.com/packethost/pkg/internal/testenv/clearer.go.
 func setupZPool(t *testing.T) cleanUpFunc {
 	t.Helper()
+
+	// TODO: this is a hack to allow running tests against a remote zfs server
+	if TestRemote || os.Getenv("TEST_REMOTE") == "true" || runtime.GOOS == "darwin" {
+		setRemoteConfig()
+	}
+
+	// skip local temp file creation but use image files from container if we're using a remote config
+	if zfs.RemoteConfig != nil {
+		pool, err := zfs.CreateZpool("test", nil, "/root/disk1.img", "/root/disk2.img")
+		ok(t, err)
+		return func() {
+			ok(t, pool.Destroy())
+		}
+	}
 
 	d, err := ioutil.TempDir("/tmp/", "zfs-test-*")
 	ok(t, err)
