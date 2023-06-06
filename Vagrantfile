@@ -8,7 +8,7 @@ Vagrant.configure("2") do |config|
     freebsd.vm.box = "generic/freebsd13"
   end
   config.ssh.forward_agent = true
-  config.vm.synced_folder ".", "/home/vagrant/go/src/github.com/mistifyio/go-zfs", create: true
+  config.vm.synced_folder ".", "/home/vagrant/go/src/github.com/mistifyio/go-zfs", create: true, type: "rsync"
   config.vm.provision "shell", inline: <<-EOF
     set -euxo pipefail
 
