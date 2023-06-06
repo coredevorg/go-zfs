@@ -1,6 +1,8 @@
 bin
 go-zfs.test
 .vagrant
-
+.idea
+.vscode
+.DS_Store
 # added by lint-install
 out/
