@@ -278,6 +278,13 @@ func TestRollback(t *testing.T) {
 func TestDiff(t *testing.T) {
 	defer setupZPool(t).cleanUp()
 
+	// TODO: run shell script to create remote files and directories
+	if TestRemote {
+		// t.Skip("Skipping diff test on remote host")
+		ok(t, nil)
+		return
+	}
+
 	fs, err := zfs.CreateFilesystem("test/origin", nil)
 	ok(t, err)
 
